@@ -1,0 +1,4 @@
+rps27a
+histone_h2b_type_1-j
+nadh_dehydrogenase_[ubiquinone]_1_beta_s_2
+v-type_proton_atpase_subunit_g_2
