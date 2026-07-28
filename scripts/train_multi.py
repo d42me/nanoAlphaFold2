@@ -69,6 +69,7 @@ def parse_args():
         type=Path,
         default=SPLIT_DIR / "exclude.txt",
     )
+    parser.add_argument("--resume", type=Path, help="checkpoint to continue")
     return parser.parse_args()
 
 
@@ -109,21 +110,43 @@ def main():
     distograms = {name: distogram_target(targets[name]["CA"]) for name in dataset.names}
 
     model = AlphaFold2FromScratch(cfg).to(device)
+    checkpoint = (
+        torch.load(args.resume, map_location=device, weights_only=False)
+        if args.resume
+        else None
+    )
+    start_step = checkpoint["step"] if checkpoint else 0
+    if checkpoint:
+        model.load_state_dict(checkpoint["model"])
+
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
+    if checkpoint and "optimizer" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+    if start_step:
+        for group in optimizer.param_groups:
+            group.setdefault("initial_lr", cfg.lr)
     scheduler = (
         torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=cfg.steps, eta_min=args.min_lr
+            optimizer,
+            T_max=cfg.steps,
+            eta_min=args.min_lr,
+            last_epoch=start_step - 1,
         )
         if args.cosine
         else None
     )
+    if scheduler and checkpoint and checkpoint.get("scheduler") is not None:
+        scheduler.load_state_dict(checkpoint["scheduler"])
     print(
         f"student params: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M",
         flush=True,
     )
 
+    if checkpoint:
+        print(f"resumed {args.resume} at step {start_step}", flush=True)
+
     started_at = time.time()
-    for step in range(1, cfg.steps + 1):
+    for step in range(start_step + 1, cfg.steps + 1):
         name = random.choice(train_names)
         batch = {
             key: value.to(device)
@@ -174,7 +197,13 @@ def main():
             ]
             print(f"  >> TRAIN {train_scores}\n  >> VAL   {val_scores}", flush=True)
             torch.save(
-                {"cfg": cfg.__dict__, "model": model.state_dict(), "step": step},
+                {
+                    "cfg": cfg.__dict__,
+                    "model": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict() if scheduler else None,
+                    "step": step,
+                },
                 CHECKPOINT_DIR / f"{args.tag}.pt",
             )
 

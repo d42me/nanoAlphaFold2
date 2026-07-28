@@ -14,6 +14,8 @@ translation. Their origins are the final Cα coordinates. Unlike full AlphaFold,
 this teaching model omits side-chain torsion prediction and atom reconstruction.
 """
 
+import math
+
 import torch
 import torch.nn as nn
 from .geometry import quat_to_rot, make_T, apply, invert
@@ -30,16 +32,14 @@ class IPA(nn.Module):
         self.h, self.c, self.n_qp, self.n_vp = h, c, n_qp, n_vp
         self.ns = nn.LayerNorm(cs)
         self.nz = nn.LayerNorm(cz)
-        self.qkv = nn.Linear(
-            cs, 3 * h * c, bias=False
-        )  # scalar q/k/v (like classic attention)
+        self.qkv = nn.Linear(cs, 3 * h * c)  # scalar q/k/v (like classic attention)
         self.qp = nn.Linear(
             cs, h * n_qp * 3
         )  # query POINTS (3D), placed in residue frame
         self.kvp = nn.Linear(
             cs, h * (n_qp + n_vp) * 3
         )  # key POINTS (same count as queries) + value POINTS
-        self.bias = nn.Linear(cz, h, bias=False)  # pair repr -> score bias
+        self.bias = nn.Linear(cz, h)  # pair repr -> score bias
         self.gamma = nn.Parameter(
             torch.zeros(h)
         )  # learnable weight of the 3D point term
@@ -75,15 +75,20 @@ class IPA(nn.Module):
             R_, self.h, self.n_vp, 3
         )
         # --- three score terms: content + pair bias + 3D proximity ---
-        a = torch.einsum("qhc,khc->hqk", q, k) * self.c**-0.5  # content scores
-        a = a + self.bias(z_).permute(2, 0, 1)  # pair bias
-        d2 = (
+        content_scores = torch.einsum("qhc,khc->hqk", q, k) * self.c**-0.5
+        pair_bias = self.bias(z_).permute(2, 0, 1)
+        squared_distances = (
             (qp.unsqueeze(1) - kp.unsqueeze(0)).pow(2).sum(-1)
-        )  # (R_q, R_k, h, n_qp): squared point distances
-        a = (
-            a - self.gamma.exp()[:, None, None] * d2.sum(-1).permute(2, 0, 1) / 2
-        )  # nearby points attract, learnable strength
-        w = a.softmax(-1)  # attention weights
+        )  # (R_q, R_k, h, n_qp)
+        point_weight = math.sqrt(2 / (9 * self.n_qp))
+        point_scores = (
+            nn.functional.softplus(self.gamma)[:, None, None]
+            * point_weight
+            * squared_distances.sum(-1).permute(2, 0, 1)
+            / 2
+        )
+        scores = math.sqrt(1 / 3) * (content_scores + pair_bias - point_scores)
+        w = scores.softmax(-1)
         # --- three outputs: scalar values, pair values, point values (read out in the LOCAL frame!) ---
         o_s = torch.einsum("hqk,khc->qhc", w, v).flatten(-2)  # (R, h*c)
         o_z = torch.einsum("hqk,qkc->qhc", w, z_).flatten(-2)  # (R, h*c_z)
@@ -125,33 +130,31 @@ class StructureModule(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.n = cfg.n_ipa
-        self.ipa = nn.ModuleList([IPA(cfg) for _ in range(self.n)])
-        self.tr = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.LayerNorm(cfg.c_s),  # single-repr transition between IPA rounds
-                    nn.Linear(cfg.c_s, cfg.c_s),
-                    nn.ReLU(),
-                    nn.Linear(cfg.c_s, cfg.c_s),
-                )
-                for _ in range(self.n)
-            ]
+        self.ipa = IPA(cfg)
+        self.tr = nn.Sequential(
+            nn.LayerNorm(cfg.c_s),  # single-repr transition between IPA rounds
+            nn.Linear(cfg.c_s, cfg.c_s),
+            nn.ReLU(),
+            nn.Linear(cfg.c_s, cfg.c_s),
         )
-        self.upd = BackboneUpdate(cfg.c_s)  # shared across layers (AF2 shares it too)
+        self.upd = BackboneUpdate(cfg.c_s)
         self.ns0 = nn.LayerNorm(cfg.c_s)
         self.nz0 = nn.LayerNorm(cfg.c_z)
 
     def forward(self, s, z):
         s, z = self.ns0(s), self.nz0(z)
-        R = s.shape[0]
+        n_res = s.shape[0]
         T = make_T(
-            torch.eye(3, device=s.device).expand(
-                R, 3, 3
-            ),  # start: identity frame at the origin per residue
-            torch.zeros(R, 3, device=s.device),
-        )
-        for ipa, tr in zip(self.ipa, self.tr):
-            s = s + ipa(s, z, T)  # 3D-aware attention updates the single repr
-            s = s + tr(s)  # transition
-            T = self.upd(s, T)  # frames move; next IPA round sees the new geometry
+            torch.eye(3, device=s.device, dtype=s.dtype).expand(n_res, 3, 3),
+            torch.zeros(n_res, 3, device=s.device, dtype=s.dtype),
+        )  # start with one identity frame per residue
+        for iteration in range(self.n):
+            s = s + self.ipa(s, z, T)  # shared IPA weights across iterations
+            s = s + self.tr(s)
+            T = self.upd(s, T)
+            if iteration + 1 < self.n:
+                T = make_T(
+                    T[..., :3, :3].detach(),
+                    T[..., :3, 3],
+                )  # stop rotation gradients before the next IPA iteration
         return T, s  # T[..., :3, 3] = predicted CA positions

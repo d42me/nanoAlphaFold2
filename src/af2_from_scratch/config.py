@@ -20,6 +20,8 @@ class AF2Config:
     pair_heads: int = 4  # triangle attention heads            (AF2: 4)
     ipa_heads: int = 4  # IPA heads                           (AF2: 12)
     c_hidden: int = 32  # hidden dim inside attention/tri ops (AF2: 32/128)
+    msa_dropout: float = 0.15  # row-wise dropout probability       (AF2: 0.15)
+    pair_dropout: float = 0.25  # pair-stack dropout probability    (AF2: 0.25)
     # --- depths ---
     n_evo: int = 4  # Evoformer blocks                    (AF2: 48)
     n_extra: int = 1  # extra-MSA tower blocks              (AF2: 4)

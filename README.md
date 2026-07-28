@@ -1,8 +1,10 @@
 # AlphaFold 2 from Scratch
 
-A compact, educational implementation of the major AlphaFold 2 ideas in PyTorch. The project is organized so that each conceptual stage has one notebook and one focused Python module.
+A compact, educational implementation of the major AlphaFold 2 ideas in PyTorch. Each conceptual stage has one numbered notebook and one focused Python module, with plain-language explanations followed by the precise architecture.
 
-> This is a teaching implementation, not a production protein-structure predictor or a drop-in replacement for AlphaFold 2.
+The implementation includes gated MSA attention, global extra-MSA column attention, shared row/column dropout, recycling, invariant point attention, local-frame geometry, FAPE, distograms, and pLDDT supervision.
+
+> This is a teaching implementation, not a production protein-structure predictor or a drop-in replacement for AlphaFold 2. It predicts a Cα backbone trace rather than an all-atom structure.
 
 ## Learn the architecture in order
 
@@ -72,32 +74,42 @@ af2-from-scratch/
 ├── scripts/                    # data and training entry points
 ├── examples/tautomerase/       # small tracked example
 ├── configs/splits/             # tracked experiment splits
-├── tests/                      # fast architecture smoke tests
+├── tests/                      # fast architecture regression tests
 ├── data/                       # generated data; ignored
 ├── checkpoints/                # generated weights; ignored
-└── logs/                       # generated logs; ignored
+├── logs/                       # generated logs; ignored
+├── pyproject.toml              # package metadata and dependency extras
+└── uv.lock                     # reproducible dependency resolution
 ```
 
-## Installation
+## Installation with uv
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) once, then clone and synchronize the project environment:
 
 ```bash
-git clone <your-repository-url>
-cd af2-from-scratch
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[all]'
+git clone https://github.com/d42me/af2.git
+cd af2
+uv sync --all-extras
 ```
 
-For only the core implementation:
+`uv sync` creates `.venv/` and installs the locked Python dependencies. `--all-extras` includes notebooks, data fetching, tests, and Ruff.
+
+For only the core PyTorch package:
 
 ```bash
-pip install -e .
+uv sync
+```
+
+To add selected capabilities instead:
+
+```bash
+uv sync --extra notebooks --extra data
 ```
 
 ## Run the notebooks
 
 ```bash
-jupyter lab notebooks/
+uv run jupyter lab notebooks/
 ```
 
 Start with `00_pipeline_overview.ipynb`, then follow the numerical order. Every architecture notebook contains an ASCII data-flow diagram and points to the corresponding module under `src/af2_from_scratch/`.
@@ -107,35 +119,42 @@ Start with `00_pipeline_overview.ipynb`, then follow the numerical order. Every 
 The bundled tautomerase example is sufficient for the single-protein walkthrough:
 
 ```bash
-python scripts/train_single.py 2>&1 | tee logs/train_single.log
+uv run python scripts/train_single.py 2>&1 | tee logs/train_single.log
 ```
 
-For multi-protein training:
+For multi-protein training (`--all-extras` already includes the data dependency):
 
 ```bash
-pip install -e '.[data]'
-python scripts/fetch_data.py
-python scripts/train_multi.py 2>&1 | tee logs/train_multi.log
+uv run python scripts/fetch_data.py
+uv run python scripts/train_multi.py 2>&1 | tee logs/train_multi.log
+```
+
+Resume a multi-protein run from a checkpoint with:
+
+```bash
+uv run python scripts/train_multi.py --resume checkpoints/multi.pt
 ```
 
 Large alignments, checkpoints, and logs stay local through directory-specific `.gitignore` files.
 
 ## Development
 
-Format every Python file with Ruff through `uv`:
+Install all development dependencies once:
 
 ```bash
-uvx ruff format .
+uv sync --all-extras
 ```
 
-Check formatting and run the smoke tests before committing:
+Format, lint, and test through the locked environment:
 
 ```bash
-uvx ruff format --check .
-uv run --extra dev pytest
+uv run ruff format .
+uv run ruff format --check .
+uv run ruff check .
+uv run pytest
 ```
 
-Ruff formats both Python files and notebook code cells; Markdown cells remain unchanged.
+Ruff formats both Python files and notebook code cells; Markdown cells remain unchanged. The regression suite covers tensor shapes and key architectural behavior such as recycling, attention gating, shared dropout, IPA invariance, lDDT-Cα, and FAPE normalization.
 
 ## Tensor glossary
 
@@ -153,10 +172,10 @@ ca : (R, 3)           predicted C-alpha coordinates
 
 ## Deliberate simplifications
 
-- Fewer and narrower Evoformer and structure blocks
-- Random MSA sampling instead of the complete AlphaFold clustering pipeline
-- Simplified extra-MSA processing
-- Backbone/C-alpha prediction without side-chain reconstruction
-- No template stack or production confidence suite
+- Fewer and narrower Evoformer blocks and fewer structure-module iterations
+- Random MSA sampling instead of AlphaFold's complete clustering and feature pipeline
+- Cα backbone prediction without torsion angles, side chains, or all-atom reconstruction
+- Teacher-coordinate distillation instead of AlphaFold's complete training-data pipeline and loss suite
+- No template stack, multimer handling, relaxation, or production confidence suite
 
-These choices keep the core ideas visible and make experiments practical on a single GPU.
+These choices keep the core ideas visible and make small experiments practical on a single GPU. Checkpoints created before an architecture change are not guaranteed to remain compatible.

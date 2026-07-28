@@ -16,34 +16,46 @@ def distogram_target(ca, n_bins=64, lo=2.0, hi=22.0):
     return torch.bucketize(d, torch.linspace(lo, hi, n_bins - 1, device=ca.device))
 
 
+def lddt_ca(ca_pred, ca_true, cutoff=15.0):
+    """Per-residue lDDT-Cα from errors in corresponding pairwise distances."""
+    predicted_distances = torch.cdist(ca_pred, ca_pred)
+    true_distances = torch.cdist(ca_true, ca_true)
+    distance_errors = (predicted_distances - true_distances).abs()
+    not_self = ~torch.eye(
+        ca_true.shape[0],
+        dtype=torch.bool,
+        device=ca_true.device,
+    )
+    included = (true_distances < cutoff) & not_self
+    thresholds = ca_true.new_tensor([0.5, 1.0, 2.0, 4.0])
+    pair_scores = (
+        (distance_errors[..., None] < thresholds).to(distance_errors.dtype).mean(-1)
+    )
+    score_sum = (pair_scores * included).sum(-1)
+    return score_sum / included.sum(-1).clamp_min(1)
+
+
 def lddt_target(ca_pred, ca_true, n_bins=50):
-    """How AF2 really supervises pLDDT: per-residue lDDT-CA between (detached) prediction and teacher.
-    lDDT = fraction of CA pairs within 0.5/1/2/4 Angstrom after Kabsch alignment."""
+    """Quantize detached per-residue lDDT-Cα scores for the pLDDT head."""
     with torch.no_grad():
-        p = ca_pred - ca_pred.mean(0)
-        q = ca_true - ca_true.mean(0)  # center
-        U, _, Vh = torch.linalg.svd(p.T @ q)
-        d = torch.sign(torch.linalg.det(U @ Vh))
-        R = (
-            U @ torch.diag(torch.tensor([1.0, 1.0, d], device=p.device)) @ Vh
-        )  # optimal rotation
-        err = torch.cdist(p @ R, q)  # (R, R) aligned pairwise errors
-        lddt = (
-            torch.stack([err < t for t in (0.5, 1.0, 2.0, 4.0)]).float().mean(0)
-        )  # lDDT-CA per pair
-        per_res = lddt.mean(-1)  # per-residue score in [0, 1]
-        return (per_res * n_bins).long().clamp(0, n_bins - 1)
+        scores = lddt_ca(ca_pred, ca_true)
+        return (scores * n_bins).long().clamp(0, n_bins - 1)
 
 
-def fape_ca(T_pred, T_true, ca_pred, ca_true, clamp=10.0):
-    """FAPE restricted to CA: read every CA j in every residue i's LOCAL frame and compare pred vs teacher.
-    In local frames, global rotation/translation cancels - that's what makes FAPE frame-invariant."""
+def fape_ca(
+    T_pred,
+    T_true,
+    ca_pred,
+    ca_true,
+    clamp=10.0,
+    length_scale=10.0,
+):
+    """Normalized Cα FAPE after expressing every point in every local frame."""
     lp = apply(
         invert(T_pred).unsqueeze(1), ca_pred
     )  # (R_i, R_j, 3): all predicted CAs in each predicted frame
     lt = apply(
         invert(T_true).unsqueeze(1), ca_true
     )  # (R_i, R_j, 3): same for the teacher
-    return (
-        (lp - lt).norm(dim=-1).clamp(max=clamp).mean()
-    )  # clamp limits outlier influence (AF2: 10 Angstrom)
+    errors = (lp - lt).norm(dim=-1).clamp(max=clamp)
+    return errors.mean() / length_scale

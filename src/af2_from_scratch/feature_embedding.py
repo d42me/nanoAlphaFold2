@@ -9,7 +9,9 @@ Pipeline::
 
 This stage is linear projections plus broadcasting; attention begins in the
 Evoformer. ``InputEmbedder`` creates ``m``, ``z``, and ``e`` while
-``RecyclingEmbedder`` adds information from the preceding recycle.
+``RecyclingEmbedder`` adds information from the preceding recycle. Full
+AlphaFold also recycles pseudo-beta distance features; this compact version
+recycles only the previous query row and pair representation.
 """
 
 import torch.nn as nn
@@ -60,7 +62,11 @@ class InputEmbedder(nn.Module):
 
 
 class RecyclingEmbedder(nn.Module):
-    """Alg 32: fold the previous recycle's outputs back into the inputs (LayerNorm only, no gradients across recycles)."""
+    """Add normalized query-row and pair outputs from the previous recycle.
+
+    Gradient detachment is handled by ``AlphaFold2FromScratch.forward``. Full
+    AlphaFold also adds previous pseudo-beta distance features to ``z``.
+    """
 
     def __init__(self, cfg):
         super().__init__()
@@ -71,7 +77,8 @@ class RecyclingEmbedder(nn.Module):
 
     def forward(self, m, z, m_prev, z_prev):
         if m_prev is not None:
-            m = m + self.nm(m_prev)  # first recycle has no predecessor -> skip
+            m = m.clone()
+            m[0] = m[0] + self.nm(m_prev)
         if z_prev is not None:
             z = z + self.nz(z_prev)
         return m, z

@@ -58,15 +58,23 @@ def invert(T):
     return make_T(Rt, -torch.einsum("...ij,...j->...i", Rt, T[..., :3, 3]))
 
 
+def kabsch_align(p, q):
+    """Rigidly align point set ``p`` to point set ``q`` with Kabsch."""
+    p_centered = p - p.mean(0)
+    q_centered = q - q.mean(0)
+    U, _, Vh = torch.linalg.svd(p_centered.T @ q_centered)
+    determinant = torch.sign(torch.linalg.det(U @ Vh))
+    correction = torch.diag(
+        torch.stack([determinant.new_ones(()), determinant.new_ones(()), determinant])
+    )
+    rotation = U @ correction @ Vh
+    return p_centered @ rotation + q.mean(0)
+
+
 def kabsch_rmsd(p, q):
-    """RMSD between point sets after optimal rigid alignment (Kabsch). Frame-invariant model quality metric."""
-    p, q = p - p.mean(0), q - q.mean(0)  # center both point clouds
-    U, _, Vh = torch.linalg.svd(p.T @ q)  # SVD of the covariance
-    d = torch.sign(torch.linalg.det(U @ Vh))  # guard against reflections
-    R = U @ torch.diag(torch.tensor([1.0, 1.0, d], device=p.device)) @ Vh
-    return (
-        ((p @ R - q).norm(dim=-1) ** 2).mean().sqrt()
-    )  # RMSD after applying the optimal rotation
+    """RMSD after rigidly aligning point set ``p`` to point set ``q``."""
+    aligned = kabsch_align(p, q)
+    return (aligned - q).square().sum(-1).mean().sqrt()
 
 
 def frames_from_backbone(N, CA, C):

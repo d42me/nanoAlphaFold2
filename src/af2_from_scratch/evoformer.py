@@ -18,32 +18,83 @@ import torch.nn as nn
 
 
 class MHA(nn.Module):
-    """Multi-head attention over dim -2 of x, with optional additive score bias of shape (h, q, k)."""
+    """Gated multi-head self-attention with optional score bias.
 
-    def __init__(self, c_in, c=32, heads=8):
+    Global attention averages the queries into one vector and shares one key and
+    value projection across heads. The output is broadcast back across positions
+    by the position-specific gate.
+    """
+
+    def __init__(
+        self,
+        c_in,
+        c=32,
+        heads=8,
+        gated=False,
+        global_attention=False,
+    ):
         super().__init__()
-        self.h, self.c = heads, c
-        self.qkv = nn.Linear(
-            c_in, 3 * heads * c, bias=False
-        )  # one fused projection for q, k, v
+        self.h = heads
+        self.c = c
+        self.global_attention = global_attention
+        key_value_heads = 1 if global_attention else heads
+
+        self.q = nn.Linear(c_in, heads * c, bias=False)
+        self.k = nn.Linear(c_in, key_value_heads * c, bias=False)
+        self.v = nn.Linear(c_in, key_value_heads * c, bias=False)
         self.out = nn.Linear(heads * c, c_in)
+        self.gate = nn.Linear(c_in, heads * c) if gated else None
+        if self.gate is not None:
+            nn.init.zeros_(self.gate.weight)
+            nn.init.ones_(self.gate.bias)
 
     def forward(self, x, bias=None):
-        q, k, v = self.qkv(x).chunk(3, -1)  # 3x (..., N, h*c)
+        q = self.q(x).unflatten(-1, (self.h, self.c))
+        if self.global_attention:
+            q = q.mean(dim=-3, keepdim=True)
+            k = self.k(x).unsqueeze(-2)
+            v = self.v(x).unsqueeze(-2)
+        else:
+            k = self.k(x).unflatten(-1, (self.h, self.c))
+            v = self.v(x).unflatten(-1, (self.h, self.c))
 
-        def split_heads(tensor):
-            return tensor.unflatten(-1, (self.h, self.c))
-
-        q, k, v = split_heads(q), split_heads(k), split_heads(v)
-        a = (
-            torch.einsum("...qhc,...khc->...hqk", q, k) * self.c**-0.5
-        )  # scores: contract the channel dim
+        scores = torch.einsum("...qhc,...khc->...hqk", q, k) * self.c**-0.5
         if bias is not None:
-            a = a + bias  # pair bias enters HERE (broadcast over batch dims)
-        o = torch.einsum(
-            "...hqk,...khc->...qhc", a.softmax(-1), v
-        )  # softmax over keys, then weight the values
-        return self.out(o.flatten(-2))  # merge heads back
+            scores = scores + bias
+
+        output = torch.einsum(
+            "...hqk,...khc->...qhc",
+            scores.softmax(-1),
+            v,
+        ).flatten(-2)
+        if self.gate is not None:
+            output = self.gate(x).sigmoid() * output
+        return self.out(output)
+
+
+class SharedDropout(nn.Module):
+    """Apply one dropout mask shared across a row or column dimension."""
+
+    def __init__(self, p, shared_dim):
+        super().__init__()
+        self.shared_dim = shared_dim
+        self.dropout = nn.Dropout(p)
+
+    def forward(self, x):
+        mask_shape = list(x.shape)
+        mask_shape[self.shared_dim] = 1
+        mask = self.dropout(x.new_ones(mask_shape))
+        return x * mask
+
+
+class DropoutRowwise(SharedDropout):
+    def __init__(self, p):
+        super().__init__(p=p, shared_dim=-2)
+
+
+class DropoutColumnwise(SharedDropout):
+    def __init__(self, p):
+        super().__init__(p=p, shared_dim=-3)
 
 
 class MSARowAttn(nn.Module):
@@ -52,7 +103,7 @@ class MSARowAttn(nn.Module):
     def __init__(self, c_m, c_z, c=32, heads=8):
         super().__init__()
         self.norm = nn.LayerNorm(c_m)
-        self.mha = MHA(c_m, c, heads)
+        self.mha = MHA(c_m, c, heads, gated=True)
         self.bias = nn.Linear(c_z, heads, bias=False)  # z_ij -> per-head score bias
 
     def forward(self, m, z):
@@ -61,17 +112,33 @@ class MSARowAttn(nn.Module):
 
 
 class MSAColAttn(nn.Module):
-    """Alg 8: attention along each MSA COLUMN (across sequences) - where co-evolution is read out."""
+    """Alg 8: gated attention across sequences at each residue position."""
 
     def __init__(self, c_m, c=32, heads=8):
         super().__init__()
         self.norm = nn.LayerNorm(c_m)
-        self.mha = MHA(c_m, c, heads)
+        self.mha = MHA(c_m, c, heads, gated=True)
 
     def forward(self, m):
-        return self.mha(self.norm(m).transpose(0, 1)).transpose(
-            0, 1
-        )  # (S,R,c)->(R,S,c): attend over S, then transpose back
+        return self.mha(self.norm(m).transpose(0, 1)).transpose(0, 1)
+
+
+class MSAColumnGlobalAttention(nn.Module):
+    """Memory-efficient extra-MSA attention across sequences (Algorithm 19)."""
+
+    def __init__(self, c_m, c=8, heads=8):
+        super().__init__()
+        self.norm = nn.LayerNorm(c_m)
+        self.mha = MHA(
+            c_m,
+            c,
+            heads,
+            gated=True,
+            global_attention=True,
+        )
+
+    def forward(self, m):
+        return self.mha(self.norm(m).transpose(0, 1)).transpose(0, 1)
 
 
 class Transition(nn.Module):
@@ -151,34 +218,41 @@ class TriAttn(nn.Module):
 
 
 class EvoformerBlock(nn.Module):
-    """Alg 6: the full communication round m<->z. col_attn=False turns it into the cheaper extra-MSA block (Alg 18 style)."""
+    """One MSA-to-pair communication round from Algorithm 6 or 18."""
 
-    def __init__(self, cfg, col_attn=True, c_m=None):
+    def __init__(self, cfg, c_m=None, global_column_attention=False):
         super().__init__()
-        c_m = c_m or cfg.c_m  # extra-MSA tower runs on narrower c_e channels
-        h = cfg.c_hidden
-        self.row = MSARowAttn(c_m, cfg.c_z, h, cfg.heads)
-        self.col = MSAColAttn(c_m, h, cfg.heads) if col_attn else None
+        c_m = c_m or cfg.c_m
+        hidden = cfg.c_hidden
+        column_attention = (
+            MSAColumnGlobalAttention if global_column_attention else MSAColAttn
+        )
+
+        self.row = MSARowAttn(c_m, cfg.c_z, hidden, cfg.heads)
+        self.col = column_attention(c_m, hidden, cfg.heads)
         self.tm = Transition(c_m)
-        self.opm = OuterProductMean(c_m, cfg.c_z, h)
-        self.tmo = TriMult(cfg.c_z, h, True)
-        self.tmi = TriMult(cfg.c_z, h, False)
-        self.tas = TriAttn(cfg.c_z, h, cfg.pair_heads, True)
-        self.tae = TriAttn(cfg.c_z, h, cfg.pair_heads, False)
+        self.opm = OuterProductMean(c_m, cfg.c_z, hidden)
+        self.tmo = TriMult(cfg.c_z, hidden, True)
+        self.tmi = TriMult(cfg.c_z, hidden, False)
+        self.tas = TriAttn(cfg.c_z, hidden, cfg.pair_heads, True)
+        self.tae = TriAttn(cfg.c_z, hidden, cfg.pair_heads, False)
         self.tp = Transition(cfg.c_z)
-        self.drop = nn.Dropout(0.1)  # residual dropout, keeps the tiny model honest
+
+        self.msa_row_dropout = DropoutRowwise(cfg.msa_dropout)
+        self.pair_row_dropout = DropoutRowwise(cfg.pair_dropout)
+        self.pair_column_dropout = DropoutColumnwise(cfg.pair_dropout)
 
     def forward(self, m, z):
-        m = m + self.drop(self.row(m, z))  # MSA stack: row attn (z-biased)
-        if self.col is not None:
-            m = m + self.drop(self.col(m))  #           col attn (skipped for extra MSA)
-        m = m + self.drop(self.tm(m))  #           transition
-        z = z + self.drop(self.opm(m))  # m -> z: outer product mean
-        z = z + self.drop(self.tmo(z))  # pair stack: triangle multiplication x2
-        z = z + self.drop(self.tmi(z))
-        z = z + self.drop(self.tas(z))  #             triangle attention x2
-        z = z + self.drop(self.tae(z))
-        return m, z + self.drop(self.tp(z))  #             transition
+        m = m + self.msa_row_dropout(self.row(m, z))
+        m = m + self.col(m)
+        m = m + self.tm(m)
+        z = z + self.opm(m)
+        z = z + self.pair_row_dropout(self.tmo(z))
+        z = z + self.pair_row_dropout(self.tmi(z))
+        z = z + self.pair_row_dropout(self.tas(z))
+        z = z + self.pair_column_dropout(self.tae(z))
+        z = z + self.tp(z)
+        return m, z
 
 
 class Evoformer(nn.Module):
@@ -188,17 +262,20 @@ class Evoformer(nn.Module):
         super().__init__()
         self.extra = nn.ModuleList(
             [
-                EvoformerBlock(cfg, col_attn=False, c_m=cfg.c_e)
+                EvoformerBlock(
+                    cfg,
+                    c_m=cfg.c_e,
+                    global_column_attention=True,
+                )
                 for _ in range(cfg.n_extra)
             ]
         )
         self.blocks = nn.ModuleList([EvoformerBlock(cfg) for _ in range(cfg.n_evo)])
 
     def forward(self, m, z, e):
-        for b in self.extra:
-            e, z = b(
-                e, z
-            )  # extra MSA: row attn + OPM + pair ops (no col attn) -> better z
-        for b in self.blocks:
-            m, z = b(m, z)  # main Evoformer
+        if e.shape[0] > 0:
+            for block in self.extra:
+                e, z = block(e, z)
+        for block in self.blocks:
+            m, z = block(m, z)
         return m, z

@@ -44,12 +44,12 @@ class AlphaFold2FromScratch(nn.Module):
 
     def forward(self, batch, recycles=None):
         recycles = self.cfg.recycles if recycles is None else recycles
-        m, z, e = self.emb(batch)
+        initial_m, initial_z, e = self.emb(batch)
         m_prev = z_prev = None  # recycle 0 has no predecessor
         for _ in range(recycles + 1):
             m, z = self.rec(
-                m, z, m_prev, z_prev
-            )  # re-inject previous outputs (LayerNormed)
+                initial_m, initial_z, m_prev, z_prev
+            )  # each recycle starts from the original embeddings
             m, z = self.evo(m, z, e)  # the trunk
             m_prev, z_prev = (
                 m[0].detach(),

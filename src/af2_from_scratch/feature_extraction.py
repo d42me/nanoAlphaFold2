@@ -17,7 +17,6 @@ full cluster-assignment pipeline. Public flow: ``msa_features`` parses reusable
 features once; ``sample_batch`` creates a fresh model-ready view for each step.
 """
 
-import re
 import torch
 import torch.nn.functional as F
 
@@ -27,20 +26,22 @@ IDX = {
 }  # letter -> class id: 0-19 = AA, 20 = X (unknown), 21 = '-' (gap)
 
 
-def parse_seq(s):
-    """One raw a3m sequence -> (aligned sequence, deletions-before-each-kept-char)."""
-    parts = re.split(
-        r"([a-z]+)", s
-    )  # capture-split: even idx = aligned chars, odd idx = lowercase insertion runs
-    cum = torch.tensor([len(p) if i % 2 else 0 for i, p in enumerate(parts)]).cumsum(
-        0
-    )  # insertions seen before each part
-    dels = [
-        c for i, p in enumerate(parts) if i % 2 == 0 for c in [int(cum[i])] * len(p)
-    ]  # each kept char inherits that count
-    return re.sub(
-        r"[a-z]", "", s
-    ), dels  # strip insertions -> aligned sequence (uppercase + '-' gaps)
+def parse_seq(sequence):
+    """Remove A3M insertions and count those before each aligned residue."""
+    aligned_sequence = []
+    deletion_counts = []
+    insertion_count = 0
+
+    for residue in sequence:
+        if residue.islower():
+            insertion_count += 1
+            continue
+
+        aligned_sequence.append(residue)
+        deletion_counts.append(insertion_count)
+        insertion_count = 0
+
+    return "".join(aligned_sequence), deletion_counts
 
 
 def onehot(seq, n=22):
