@@ -1,4 +1,4 @@
-"""Training signals for AlphaFold 2 from Scratch, distilled from a teacher:
+"""Training signals for nanoAlphaFold2, distilled from a teacher:
 
   1. FAPE on CA      - the iconic AF2 loss: compare positions in LOCAL frames (frame-invariant)
   2. distogram CE    - pair repr must predict the binned pairwise CA distances

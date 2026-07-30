@@ -1,4 +1,4 @@
-"""Train AlphaFold 2 from Scratch across proteins and evaluate held-out folds.
+"""Train nanoAlphaFold2 across proteins and evaluate held-out folds.
 
 Run after populating ``data/`` with ``scripts/fetch_data.py``. Split manifests
 live in ``configs/splits/`` so every experiment uses an explicit, tracked split.
@@ -65,6 +65,17 @@ def parse_args():
     )
     parser.add_argument("--min-lr", type=float, default=1e-4)
     parser.add_argument(
+        "--no-extra-msa",
+        action="store_true",
+        help="disable the extra-MSA tower and its input rows",
+    )
+    parser.add_argument(
+        "--profile-dropout",
+        type=float,
+        default=0.0,
+        help="probability of replacing the full-MSA profile with the query one-hot",
+    )
+    parser.add_argument(
         "--exclude-file",
         type=Path,
         default=SPLIT_DIR / "exclude.txt",
@@ -75,10 +86,15 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if not 0.0 <= args.profile_dropout <= 1.0:
+        raise ValueError("--profile-dropout must be between 0 and 1")
     cfg = AF2Config(steps=args.steps, n_clu=192, n_ext=192)
     if args.big:
         cfg.c_m, cfg.c_z, cfg.c_e, cfg.c_s = 96, 128, 48, 192
         cfg.n_evo, cfg.n_ipa = 8, 3
+    if args.no_extra_msa:
+        cfg.n_extra = 0
+        cfg.n_ext = 0
 
     torch.manual_seed(cfg.seed)
     random.seed(cfg.seed)
@@ -144,7 +160,9 @@ def main():
 
     if checkpoint:
         print(f"resumed {args.resume} at step {start_step}", flush=True)
+    print(f"profile dropout: {args.profile_dropout:.2f}", flush=True)
 
+    best_val_mean = checkpoint.get("best_val_mean", float("inf")) if checkpoint else float("inf")
     started_at = time.time()
     for step in range(start_step + 1, cfg.steps + 1):
         name = random.choice(train_names)
@@ -154,6 +172,8 @@ def main():
                 dataset.features[name], cfg.n_clu, cfg.n_ext, cfg.mask_p
             ).items()
         }
+        if random.random() < args.profile_dropout:
+            batch["msa_feat"][..., 23:] = batch["msa_feat"][0, :, :22]
         output = model(batch)
         target = targets[name]
         fape_loss = fape_ca(output["T"], target["frames"], output["ca"], target["CA"])
@@ -196,16 +216,23 @@ def main():
                 if name in validation_names
             ]
             print(f"  >> TRAIN {train_scores}\n  >> VAL   {val_scores}", flush=True)
-            torch.save(
-                {
-                    "cfg": cfg.__dict__,
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict() if scheduler else None,
-                    "step": step,
-                },
-                CHECKPOINT_DIR / f"{args.tag}.pt",
-            )
+            val_mean = sum(scores[name] for name in val_names) / len(val_names)
+            is_best = val_mean < best_val_mean
+            if is_best:
+                best_val_mean = val_mean
+            checkpoint_state = {
+                "cfg": cfg.__dict__,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "scheduler": scheduler.state_dict() if scheduler else None,
+                "step": step,
+                "best_val_mean": best_val_mean,
+                "args": vars(args),
+            }
+            torch.save(checkpoint_state, CHECKPOINT_DIR / f"{args.tag}.pt")
+            if is_best:
+                torch.save(checkpoint_state, CHECKPOINT_DIR / f"{args.tag}_best.pt")
+                print(f"  >> BEST  mean validation RMSD {best_val_mean:.2f} A", flush=True)
 
     print("done.", flush=True)
 

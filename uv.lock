@@ -9,7 +9,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "af2-from-scratch"
+name = "nanoalphafold2"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

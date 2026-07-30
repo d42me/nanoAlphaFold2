@@ -1,4 +1,4 @@
-"""Load CIF teacher structures for AlphaFold 2 from Scratch training.
+"""Load CIF teacher structures for nanoAlphaFold2 training.
 
 Column indices come from each file's own ``_atom_site`` header, so tutorial and
 AlphaFold DB layouts both work. AlphaFold DB pLDDT values are retained for

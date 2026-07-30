@@ -1,4 +1,4 @@
-"""Train AlphaFold 2 from Scratch on the bundled tautomerase example.
+"""Train nanoAlphaFold2 on the bundled tautomerase example.
 
 Run from any directory with:
 

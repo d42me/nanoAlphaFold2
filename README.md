@@ -1,4 +1,4 @@
-# AlphaFold 2 from Scratch
+# nanoAlphaFold2
 
 A compact, educational implementation of the major AlphaFold 2 ideas in PyTorch. Each conceptual stage has one numbered notebook and one focused Python module, with plain-language explanations followed by the precise architecture.
 
@@ -58,7 +58,7 @@ Geometry is a mathematical dependency of the structure module, teacher loader, a
 ## Repository structure
 
 ```text
-af2-from-scratch/
+nanoAlphaFold2/
 ├── src/af2_from_scratch/       # importable implementation
 │   ├── config.py               # all educational model/training knobs
 │   ├── feature_extraction.py   # stage 1
@@ -75,6 +75,7 @@ af2-from-scratch/
 ├── examples/tautomerase/       # small tracked example
 ├── configs/splits/             # tracked experiment splits
 ├── tests/                      # fast architecture regression tests
+├── results/                    # committed summaries and machine-readable metrics
 ├── data/                       # generated data; ignored
 ├── checkpoints/                # generated weights; ignored
 ├── logs/                       # generated logs; ignored
@@ -87,12 +88,12 @@ af2-from-scratch/
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) once, then clone and synchronize the project environment:
 
 ```bash
-git clone https://github.com/d42me/af2.git
-cd af2
+git clone https://github.com/d42me/nanoAlphaFold2.git
+cd nanoAlphaFold2
 uv sync --all-extras
 ```
 
-`uv sync` creates `.venv/` and installs the locked Python dependencies. `--all-extras` includes notebooks, data fetching, tests, and Ruff.
+`uv sync` creates `.venv/` and installs the locked Python dependencies. `--all-extras` includes notebooks, data fetching, tests, and Ruff. The stable Python import remains `af2_from_scratch` so existing notebooks and checkpoints keep working.
 
 For only the core PyTorch package:
 
@@ -136,6 +137,10 @@ uv run python scripts/train_multi.py --resume checkpoints/multi.pt
 ```
 
 Large alignments, checkpoints, and logs stay local through directory-specific `.gitignore` files.
+
+## Experiment results
+
+Committed conclusions and metrics live in [`results/`](results/). Start with [`results/summary.md`](results/summary.md); each detailed experiment record links its exact checkpoint, source revision, split, command, and raw log. `scripts/evaluate_msa_ablation.py` writes reproducible per-protein full-MSA and query-only measurements to CSV.
 
 ## Development
 

@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "af2-from-scratch"
+name = "nanoAlphaFold2"
 version = "0.1.0"
-description = "A compact, educational implementation of the AlphaFold 2 architecture"
+description = "A compact, educational implementation of AlphaFold 2"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "AlphaFold 2 from Scratch contributors" }]
+authors = [{ name = "nanoAlphaFold2 contributors" }]
 dependencies = [
   "torch>=2.2",
 ]

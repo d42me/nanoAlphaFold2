@@ -1,4 +1,4 @@
-"""Multi-protein dataset for AlphaFold 2 from Scratch experiments.
+"""Multi-protein dataset for nanoAlphaFold2 experiments.
 
 Each protein directory provides an A3M alignment and teacher CIF. Parsed MSA
 features and teacher targets are cached in memory after validating residue count.

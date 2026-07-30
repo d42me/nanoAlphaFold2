@@ -1,0 +1,11 @@
+checkpoint,checkpoint_sha256,step,condition,protein,msa_rows,extra_msa_rows,recycles,seed,ca_rmsd_angstrom
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,full_msa,crambin,192,125,3,42,11.1466
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,full_msa,cystatin-b,192,192,3,42,17.5288
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,full_msa,hbb,192,192,3,42,6.1858
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,full_msa,interferon_gamma,192,192,3,42,21.6484
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,full_msa,profilin-1,192,192,3,42,16.2586
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,query_only,crambin,1,0,3,42,10.0053
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,query_only,cystatin-b,1,0,3,42,15.4458
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,query_only,hbb,1,0,3,42,12.1788
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,query_only,interferon_gamma,1,0,3,42,24.9000
+checkpoints/ckpt_runC.pt,9073afa220b47a1c570ed5caa239eacd6f41162263add6ee7e1cf82fcf4ea5ea,250000,query_only,profilin-1,1,0,3,42,14.7230

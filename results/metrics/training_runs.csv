@@ -1,0 +1,5 @@
+run,parameters_m,train_proteins,steps,lr_schedule,excluded_teachers,best_mean_val_rmsd_angstrom,best_mean_step,final_mean_val_rmsd_angstrom,checkpoint,log
+A,2.02,59,150000,constant,1,12.62,32000,13.08,/home/ubuntu/af2-from-scratch-artifacts/checkpoints/ckpt_runA.pt,/home/ubuntu/af2-from-scratch-artifacts/logs/train_runA.log
+B,7.69,59,100000,constant,1,13.26,72000,13.75,/home/ubuntu/af2-from-scratch-artifacts/checkpoints/ckpt_runB.pt,/home/ubuntu/af2-from-scratch-artifacts/logs/train_runB.log
+C,7.69,56,250000,cosine_1e-3_to_1e-4,4,13.57,62000,14.56,checkpoints/ckpt_runC.pt,logs/train_runC.log
+D,7.12,56,250000,cosine_1e-3_to_1e-4_no_extra_msa,4,13.37,84000,13.70,checkpoints/ckpt_runD_no_extra.pt,logs/train_runD_no_extra.log

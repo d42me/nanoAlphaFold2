@@ -1,4 +1,4 @@
-"""Shared educational configuration for AlphaFold 2 from Scratch.
+"""Shared educational configuration for nanoAlphaFold2.
 
 Every model, data, and training knob lives here. Comments show the comparable
 AlphaFold 2 value where this teaching implementation intentionally shrinks it.

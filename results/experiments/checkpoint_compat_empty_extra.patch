@@ -1,0 +1,20 @@
+diff --git a/src/af2_from_scratch/evoformer.py b/src/af2_from_scratch/evoformer.py
+index 764a2bc..73102fb 100644
+--- a/src/af2_from_scratch/evoformer.py
++++ b/src/af2_from_scratch/evoformer.py
+@@ -195,10 +195,11 @@ class Evoformer(nn.Module):
+         self.blocks = nn.ModuleList([EvoformerBlock(cfg) for _ in range(cfg.n_evo)])
+ 
+     def forward(self, m, z, e):
+-        for b in self.extra:
+-            e, z = b(
+-                e, z
+-            )  # extra MSA: row attn + OPM + pair ops (no col attn) -> better z
++        if e.shape[0] > 0:
++            for b in self.extra:
++                e, z = b(
++                    e, z
++                )  # extra MSA: row attn + OPM + pair ops (no col attn) -> better z
+         for b in self.blocks:
+             m, z = b(m, z)  # main Evoformer
+         return m, z
