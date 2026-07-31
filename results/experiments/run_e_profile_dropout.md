@@ -1,6 +1,6 @@
 # Run E — no extra MSA with stochastic profile dropout
 
-**Status: active**
+**Status: completed**
 
 ## Question
 
@@ -57,6 +57,24 @@ Artifacts:
 - Log: `logs/train_runE_profile_dropout.log`
 - tmux session: `runE`
 
-## Success criterion
+## Results
 
-After training, strict factorial evaluation must show that non-query cluster rows materially improve held-out predictions when profile channels are absent. A better profile-enabled score alone would indicate another profile shortcut rather than successful row-level evolutionary reasoning.
+| Metric | Value |
+|---|---:|
+| Best held-out mean | **12.92 Å at step 36,000** |
+| Final held-out mean | **13.42 Å** |
+| Final training mean / median | 3.22 / 2.74 Å |
+
+| Protein | Best-checkpoint RMSD | Final RMSD |
+|---|---:|---:|
+| `crambin` | 8.21 Å | 8.41 Å |
+| `cystatin-b` | 11.79 Å | 12.69 Å |
+| `hbb` | 9.37 Å | 8.78 Å |
+| `interferon_gamma` | 21.43 Å | 20.78 Å |
+| `profilin-1` | 13.81 Å | 16.45 Å |
+
+Run E improved the best aggregate validation score by `0.45 Å` over Run D, but lost much of Run D's strong `hbb` transfer. Validation again peaked early and degraded while training fit continued to improve.
+
+## Causal follow-up
+
+Strict sequence/profile/cluster factorials are queued for both the best and final checkpoints. They must show that non-query cluster rows materially improve held-out predictions when profile channels are absent; a better profile-enabled score alone would indicate another profile shortcut rather than successful row-level evolutionary reasoning.

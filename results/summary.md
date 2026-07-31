@@ -2,7 +2,7 @@
 
 ## Current conclusion
 
-The compact model memorizes training structures and transfers within a homologous family, but it does not yet generalize to unrelated folds. Increasing capacity or extending cosine training did not improve combined held-out performance. Run C's validation mean peaked early and worsened while training fit continued to improve, indicating overfitting.
+The compact model memorizes training structures and transfers within a homologous family, but it does not yet generalize to unrelated folds. Increasing capacity or extending cosine training did not improve combined held-out performance. Removing the extra-MSA tower in Run D redirected evolutionary learning mainly into precomputed MSA profile features, not robust reasoning over non-query homolog rows. Every long run peaked early and overfit with continued optimization.
 
 ## Multi-protein runs
 
@@ -11,8 +11,9 @@ The compact model memorizes training structures and transfers within a homologou
 | A | 2.02M | 59 | 150k, constant LR | **12.62 Å** | 32k | 13.08 Å |
 | B | 7.69M | 59 | 100k, constant LR | 13.26 Å | 72k | 13.75 Å |
 | C | 7.69M | 56 | 250k, cosine `1e-3 → 1e-4`, four exclusions | 13.57 Å | 62k | 14.56 Å |
+| D | 7.12M | 56 | 250k cosine, extra-MSA tower disabled | 13.37 Å | 84k | 13.70 Å |
 
-Runs A/B and C are not perfectly controlled because Run C excludes four poor teachers. Per-protein and provenance details are in [`experiments/run_c_training.md`](experiments/run_c_training.md) and the raw logs referenced there.
+Runs A/B and C/D are not perfectly controlled because Runs C/D exclude four poor teachers. Per-protein and provenance details are in [`experiments/run_c_training.md`](experiments/run_c_training.md) and the raw logs referenced there.
 
 ## Earlier evidence
 
@@ -68,8 +69,23 @@ Independently shuffling each extra-MSA column preserves amino-acid frequencies b
 
 Column shuffling costs only `0.22 Å` on `hbb` and `0.09 Å` on `interferon_gamma`; most of their extra-MSA gain remains. It improves all three MSA-negative proteins. The model therefore relies primarily on per-column marginal/conservation-like information, with only a small useful covariance contribution in the two responsive families. See [`experiments/run_c_profile_paths.md`](experiments/run_c_profile_paths.md) and [`experiments/run_c_extra_covariance.md`](experiments/run_c_extra_covariance.md).
 
-## Active: Run D
+## Run D — no extra-MSA tower
 
-Run D is training the checkpoint-compatible large architecture with the extra-MSA tower removed (`n_extra=0`, `n_ext=0`). The main MSA retains 192 rows, forcing any learned evolutionary transfer through the cluster-MSA path. See [`experiments/run_d_no_extra.md`](experiments/run_d_no_extra.md).
+Run D completed with a best validation mean of `13.37 Å` and final mean of `13.70 Å`. Its post-training factorial identifies where evolutionary information moved:
 
-Success requires more than low training RMSD: after training, cluster-MSA input must change held-out predictions relative to strict sequence-only and ideally recover the `hbb` transfer gain.
+| Condition | Mean held-out RMSD |
+|---|---:|
+| Strict sequence-only | 14.52 Å |
+| Profile only | **13.50 Å** |
+| 192 cluster rows, no profile | 14.40 Å |
+| 192 cluster rows + profile | 13.69 Å |
+
+Removing the extra tower made the precomputed MSA profile useful, improving the mean by `1.03 Å`. Non-query cluster rows remain weak and mixed: they slightly activate the path but do not provide robust co-evolutionary transfer. See [`experiments/run_d_no_extra.md`](experiments/run_d_no_extra.md) and [`experiments/run_d_cluster_paths.md`](experiments/run_d_cluster_paths.md).
+
+## Run E: profile dropout improved aggregate validation
+
+Run E kept the extra-MSA tower disabled and replaced the full-MSA profile with the query one-hot on 50% of training batches. Its best held-out mean was **12.92 Å at step 36k**, improving on Run D by `0.45 Å`, while the final mean was `13.42 Å`. The gain was mixed across proteins and `hbb` transfer weakened substantially. See [`experiments/run_e_profile_dropout.md`](experiments/run_e_profile_dropout.md).
+
+## Active ablations
+
+Strict sequence/profile/cluster factorials are running on Run E's best and final checkpoints. Run F is queued immediately afterward with 100% profile dropout, directly removing the profile shortcut throughout training while preserving 192 actual main-MSA rows. See [`experiments/run_f_no_profile.md`](experiments/run_f_no_profile.md).

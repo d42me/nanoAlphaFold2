@@ -1,4 +1,4 @@
-"""Measure whether Run D uses non-query rows in the main MSA path."""
+"""Measure whether a checkpoint uses non-query rows in the main MSA path."""
 
 import argparse
 import csv
@@ -75,8 +75,6 @@ def main():
     args = parse_args()
     checkpoint_path = args.checkpoint.resolve()
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    if checkpoint["step"] != 250_000:
-        raise ValueError(f"expected final step 250000, got {checkpoint['step']}")
     cfg = AF2Config(**checkpoint["cfg"])
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
