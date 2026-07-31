@@ -1,4 +1,4 @@
-"""Measure whether a checkpoint uses non-query rows in the main MSA path."""
+"""Test whether main-MSA effects depend on cross-position covariance."""
 
 import argparse
 import csv
@@ -14,12 +14,7 @@ from af2_from_scratch.geometry import kabsch_rmsd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 SPLIT_DIR = PROJECT_ROOT / "configs" / "splits"
-CONDITIONS = (
-    "sequence_only",
-    "profile_only",
-    "cluster_no_profile",
-    "cluster_plus_profile",
-)
+CONDITIONS = ("query_only", "real_cluster", "row_permuted", "column_shuffled")
 
 
 def parse_args():
@@ -41,28 +36,31 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def cluster_batch(features, depth, seed, condition):
+def covariance_batch(features, depth, seed, condition):
     sequences = features["msa_aatype"]
     deletions = features["deletion_matrix"]
     generator = torch.Generator().manual_seed(seed)
     permutation = torch.randperm(sequences.shape[0] - 1, generator=generator) + 1
     cluster_rows = torch.cat([torch.tensor([0]), permutation[: depth - 1]])
+    row_features = torch.cat(
+        [sequences[cluster_rows], deletions[cluster_rows][..., None]], dim=-1
+    )
 
-    if condition in ("sequence_only", "profile_only"):
-        cluster_rows = torch.tensor([0])
-    profile = (
-        features["profile"]
-        if condition in ("profile_only", "cluster_plus_profile")
-        else sequences[0]
-    )
-    msa_feat = torch.cat(
-        [
-            sequences[cluster_rows],
-            deletions[cluster_rows][..., None],
-            profile.expand(len(cluster_rows), -1, -1),
-        ],
-        dim=-1,
-    )
+    shuffle_generator = torch.Generator().manual_seed(seed + 10_000)
+    if condition == "query_only":
+        row_features = row_features[:1]
+    elif condition == "row_permuted":
+        order = torch.randperm(len(cluster_rows) - 1, generator=shuffle_generator) + 1
+        row_features = torch.cat([row_features[:1], row_features[order]])
+    elif condition == "column_shuffled":
+        shuffled = row_features.clone()
+        for column in range(row_features.shape[1]):
+            order = torch.randperm(len(cluster_rows) - 1, generator=shuffle_generator) + 1
+            shuffled[1:, column] = row_features[order, column]
+        row_features = shuffled
+
+    query_profile = sequences[0].expand(len(row_features), -1, -1)
+    msa_feat = torch.cat([row_features, query_profile], dim=-1)
     return {
         "msa_feat": msa_feat,
         "extra_msa_feat": torch.empty(0, sequences.shape[1], 23),
@@ -95,7 +93,7 @@ def main():
         for condition in CONDITIONS:
             for seed in args.seeds:
                 for protein in proteins:
-                    batch = cluster_batch(
+                    batch = covariance_batch(
                         dataset.features[protein], args.depth, seed, condition
                     )
                     actual_msa_rows = batch["msa_feat"].shape[0]
@@ -121,7 +119,7 @@ def main():
                         }
                     )
                     print(
-                        f"{condition:20s} seed={seed} {protein:18s} {rmsd:6.2f} Å",
+                        f"{condition:15s} seed={seed} {protein:18s} {rmsd:6.2f} Å",
                         flush=True,
                     )
 

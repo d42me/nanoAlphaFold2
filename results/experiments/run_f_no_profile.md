@@ -1,6 +1,6 @@
 # Run F — no extra MSA and no full-MSA profile
 
-**Status: queued after Run E factorials**
+**Status: active**
 
 ## Question
 

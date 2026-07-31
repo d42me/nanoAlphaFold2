@@ -77,4 +77,4 @@ Run E improved the best aggregate validation score by `0.45 Å` over Run D, but 
 
 ## Causal follow-up
 
-Strict sequence/profile/cluster factorials are queued for both the best and final checkpoints. They must show that non-query cluster rows materially improve held-out predictions when profile channels are absent; a better profile-enabled score alone would indicate another profile shortcut rather than successful row-level evolutionary reasoning.
+The strict factorial found that non-query cluster rows improve the mean by `0.31 Å` at the best checkpoint and `0.18 Å` at the final checkpoint when profile channels are absent. Profile channels have effectively no impact. This is the first positive aggregate evidence that a long run uses actual homolog rows through the main MSA stack, although the effect remains modest and mixed across proteins. See [`run_e_cluster_paths.md`](run_e_cluster_paths.md).

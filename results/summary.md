@@ -86,6 +86,10 @@ Removing the extra tower made the precomputed MSA profile useful, improving the 
 
 Run E kept the extra-MSA tower disabled and replaced the full-MSA profile with the query one-hot on 50% of training batches. Its best held-out mean was **12.92 Å at step 36k**, improving on Run D by `0.45 Å`, while the final mean was `13.42 Å`. The gain was mixed across proteins and `hbb` transfer weakened substantially. See [`experiments/run_e_profile_dropout.md`](experiments/run_e_profile_dropout.md).
 
+## Run E: actual cluster rows are modestly useful
+
+The strict factorial shows that 192 non-query cluster rows improve the profile-free mean by **0.31 Å** at Run E's best checkpoint and `0.18 Å` at its final checkpoint. Full-MSA profile channels have effectively no impact. This is the first positive aggregate evidence that a long run uses actual homolog rows through the main MSA stack, although the effect is mixed across proteins. See [`experiments/run_e_cluster_paths.md`](experiments/run_e_cluster_paths.md).
+
 ## Active ablations
 
-Strict sequence/profile/cluster factorials are running on Run E's best and final checkpoints. Run F is queued immediately afterward with 100% profile dropout, directly removing the profile shortcut throughout training while preserving 192 actual main-MSA rows. See [`experiments/run_f_no_profile.md`](experiments/run_f_no_profile.md).
+Run F is training with 100% profile dropout, directly removing the profile shortcut throughout training while preserving 192 actual main-MSA rows. Best/final factorials and row-versus-column covariance controls are queued automatically; the latter will distinguish cross-position covariance from per-column marginal use. See [`experiments/run_f_no_profile.md`](experiments/run_f_no_profile.md).

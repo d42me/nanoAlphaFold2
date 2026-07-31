@@ -12,7 +12,8 @@ This directory is the canonical record of experimental outcomes.
 - [`experiments/run_d_no_extra.md`](experiments/run_d_no_extra.md) — completed no-extra-MSA training ablation
 - [`experiments/run_d_cluster_paths.md`](experiments/run_d_cluster_paths.md) — post-training profile and cluster-row factorial
 - [`experiments/run_e_profile_dropout.md`](experiments/run_e_profile_dropout.md) — completed 50% profile-dropout training ablation
-- [`experiments/run_f_no_profile.md`](experiments/run_f_no_profile.md) — queued 100% profile-dropout training ablation
+- [`experiments/run_e_cluster_paths.md`](experiments/run_e_cluster_paths.md) — positive main-MSA homolog-row factorial
+- [`experiments/run_f_no_profile.md`](experiments/run_f_no_profile.md) — active 100% profile-dropout training ablation
 - `metrics/*.csv` — machine-readable per-run and per-protein measurements
 
 Large artifacts remain outside this directory:
